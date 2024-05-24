@@ -1,10 +1,13 @@
-#include <TridentTD_LineNotify.h>
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266Firebase.h>
 #include <WiFiUdp.h>
 #include <TimeLib.h>
 #include <SoftwareSerial.h>
+#include <UrlEncode.h>
+#include <ESP8266HTTPClient.h>
+
+
 EspSoftwareSerial::UART DataSerial;
 
 // change to ur wifi
@@ -19,6 +22,7 @@ Firebase firebase(REFERENCE_URL);
 
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendNotifyPrevMillis = 0;
+unsigned long sendDailyNotiPrevMillis = 0;
 float humidity = 50;
 float light = 50;
 float temp = 50;
@@ -32,6 +36,35 @@ byte packetBuffer[NTP_PACKET_SIZE];
 unsigned long lastNTPSync = 0;
 const unsigned long NTP_SYNC_INTERVAL = 3600000;  // Sync every 1 hour
 const int GMT_OFFSET = 7 * 3600;                  // GMT+7 offset in seconds
+
+String phoneNumber = "66989829510";
+String apiKey = "7153866";
+
+void sendMessage(String message){
+
+  // Data to send with HTTP POST
+  String url = "http://api.callmebot.com/whatsapp.php?phone=" + phoneNumber + "&apikey=" + apiKey + "&text=" + urlEncode(message);
+  WiFiClient client;    
+  HTTPClient http;
+  http.begin(client, url);
+
+  // Specify content-type header
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  
+  // Send HTTP POST request
+  int httpResponseCode = http.POST(url);
+  if (httpResponseCode == 200){
+    Serial.println("Message sent successfully");
+  }
+  else{
+    Serial.println("Error sending the message");
+    Serial.print("HTTP response code: ");
+    Serial.println(httpResponseCode);
+  }
+
+  // Free resources
+  http.end();
+}
 
 
 void getTimeFromNTP() {
@@ -82,11 +115,8 @@ void setup() {
   Serial.println();
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
-
-
-  LINE.setToken(API_KEY);
-  LINE.notify("เปิดเครื่องแล้ว");
-
+  
+  sendMessage("เปิดเครื่องแล้ว");
   getTimeFromNTP();
 }
 
@@ -109,8 +139,15 @@ void Update_Data() {
   }
 }
 
-void loop() {
+// void notifyLine(String s) {
+//   LINE.setToken(API_KEY);
+//   LINE.notify(s);
+//   // LINE.notifyPicture("https://preview.ibb.co/j6G51n/capture25610417181915334.png");
+//   Serial.println("noti success");
+// }
 
+void loop() {
+  // sendMessage("in loop");
   if ((millis() - sendDataPrevMillis > 3000 || sendDataPrevMillis == 0)) {
     Update_Data();
 
@@ -118,7 +155,8 @@ void loop() {
     humidity = Data[0].toFloat() / 100.0;
     temp = Data[1].toFloat() / 100.0;
     light = Data[2].toFloat();
-    double lux = ((500.0 * 3.7 / (light / 1000.0)) - 500) / 2.0;  // equation
+    // double lux = ((500.0 * 3.7 / (light / 1000.0)) - 500) / 2.0;  // equation
+    double lux = light / 45.96;
     Serial.print("light : ");
     Serial.println(lux);
     Serial.print("humidity : ");
@@ -129,7 +167,7 @@ void loop() {
     // error detection
     bool error = false;
     if (light > 5000 or light == 0 or humidity > 100 or humidity == 0 or temp == 0 or temp > 100) {
-      LINE.notify("error detected");
+      sendMessage("error detected");
       error = true;
     }
     if (!error) {
@@ -146,15 +184,19 @@ void loop() {
     String hoursStr = hour() < 10 ? "0" + String(hour()) : String(hour());
     String minutesStr = minute() < 10 ? "0" + String(minute()) : String(minute());
     String secondsStr = second() < 10 ? "0" + String(second()) : String(second());
-    String timeStr = hoursStr + ":" + minutesStr + ":" + secondsStr;
+    String timeStr = hoursStr + ":" + minutesStr;
     firebase.setString("lastUpdate", hoursStr + ":" + minutesStr + ":" + secondsStr);
-
-    if (!error and (light > 300 || humidity < 30 || temp > 38) and (millis() - sendNotifyPrevMillis > 1000 * 3600 * 4 or sendNotifyPrevMillis == 0)) {
+    Serial.println(error);
+    Serial.println(light);
+    Serial.println(millis() - sendNotifyPrevMillis > 15000);
+    if (!error and (light > 3800 || humidity < 30 || temp > 38) and (millis() - sendNotifyPrevMillis > 15000 or sendNotifyPrevMillis == 0)) {
       sendNotifyPrevMillis = millis();
-      LINE.notify("แจ้งเตือนการรดน้ำต้นไม้");
+      Serial.println("asdasdasd");
+      sendMessage("แจ้งเตือนการรดน้ำต้นไม้");
     }
-    if (timeStr == "07:00:00" || timeStr == "18:00:00") {
-      LINE.notify("แจ้งเตือนการรดน้ำต้นไม้ประจำเวลา");
+    if ((timeStr == "06:00" || timeStr == "17:06") && (millis() - sendDailyNotiPrevMillis >= 1000 * 3600 * 12 || sendDailyNotiPrevMillis == 0)) {
+      sendMessage("แจ้งเตือนการรดน้ำต้นไม้ประจำเวลา");
+      sendDailyNotiPrevMillis = millis();
     }
   }
 }
