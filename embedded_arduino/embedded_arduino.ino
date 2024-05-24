@@ -189,7 +189,7 @@ void loop() {
     Serial.println(error);
     Serial.println(light);
     Serial.println(millis() - sendNotifyPrevMillis > 15000);
-    if (!error and (light > 3800 || humidity < 30 || temp > 38) and (millis() - sendNotifyPrevMillis > 15000 or sendNotifyPrevMillis == 0)) {
+    if (!error and (light > 3800 || humidity < 30 || temp > 38) and (millis() - sendNotifyPrevMillis > 1000*3600*11 or sendNotifyPrevMillis == 0)) {
       sendNotifyPrevMillis = millis();
       Serial.println("asdasdasd");
       sendMessage("แจ้งเตือนการรดน้ำต้นไม้");
